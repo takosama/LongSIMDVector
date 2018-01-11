@@ -1,14 +1,15 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Numerics;
+using System.Xml.Serialization;
 
 namespace LongSIMDVector
 {
     namespace ConsoleApp19
     {
-        internal class Program
+  unsafe      internal class Program
         {
-            private static void Main(string[] args)
+       unsafe     private static void Main(string[] args)
             {
                 var arr = new float[1001];
                 for (var i = 0; i < arr.Length; i++)
@@ -30,11 +31,12 @@ namespace LongSIMDVector
 
                 for (var i = 0; i < 1000000; i++)
                 {
-               //       tmpa= Arra.add(arr, arr2);
-               //  sum=      Arra.sum(tmpa);//1002001
+                    //       tmpa= Arra.add(arr, arr2);
+                     //        sum = Arra.dot(arr, arr2); //1002001 3.34334E+08
 
-                    tmp = LongVector.Add(lv, lv2);
-                    sum = tmp.Sum();
+                    //    tmp = LongVector.Add(lv, lv2); 3.34334E+08
+                        sum = LongVector.Dot(lv, lv2);
+                    
                 }
                 sw.Stop();
                 Console.WriteLine(sw.ElapsedMilliseconds);
@@ -59,13 +61,64 @@ namespace LongSIMDVector
                 return sum;
             }
 
-          
+            public static float dot(float[] arr, float[] arr1)
+            {
+                float sum = 0;
+                for (var i = 0; i < arr.Length; i++)
+                    sum += arr[i] * arr1[i];
+                return sum;
+            }
         }
 
-         class LongVector
+  unsafe      internal class LongVector
         {
             public Vector4[] Vector4s;
             public int Lng;
+
+
+            public float this[int n]
+            {
+                get
+                {
+                    switch (n % 4)
+                    {
+                        case 0:
+                            return Vector4s[n / 4].X;
+                        case 1:
+                            return Vector4s[n / 4].Y;
+                        case 2:
+                            return Vector4s[n / 4].Z;
+                        case 3:
+                            return Vector4s[n / 4].W;
+                    }
+                    throw new Exception();
+                }
+                set
+                {
+                    switch (n % 4)
+                    {
+                        case 0:
+                            Vector4s[n / 4].X = value;
+                            return;
+                        case 1:
+                            Vector4s[n / 4].Y = value;
+                            return;
+                        case 2:
+                            Vector4s[n / 4].Z = value;
+                            return;
+                        case 3:
+                            Vector4s[n / 4].W = value;
+                            return;
+                    }
+                }
+            }
+
+            public LongVector(int n)
+            {
+                this.Lng = n;
+                var num = n % 4 == 0 ? n / 4 : n / 4 + 1;
+                this.Vector4s=new Vector4[num];
+            }
 
             public LongVector(Vector4[] v, int Lng)
             {
@@ -115,10 +168,18 @@ namespace LongSIMDVector
                 return Sum_s(last, tmp);
             }
 
-            public float Sum_s(int lng, Vector4[] tmp)
+            private float Sum_s(int lng, Vector4[] tmp)
             {
                 if (lng == 1)
-                    return tmp[0].X + tmp[0].Y + tmp[0].Z + tmp[0].W;
+                {
+                    fixed (float* p = &tmp[0].X)
+                    {
+                        float* pp = p;
+                        return *pp + *(++pp) + *(++pp) + *(++pp);
+                    }
+                }
+
+
                 var isAmari = lng % 2 == 1;
                 var last = lng / 2;
                 for (var i = 0; i < last; i++)
@@ -129,6 +190,25 @@ namespace LongSIMDVector
                 return Sum_s(last, tmp);
             }
 
+       unsafe     public static float Dot(LongVector v0, LongVector v1)
+            {
+               var tmp = new LongVector(v0.Lng);
+                fixed (float* p = &tmp.Vector4s[0].X)
+                fixed (Vector4* vvv0 = &v0.Vector4s[0])
+                fixed (Vector4* vvv1 = &v1.Vector4s[0])
+                {
+                    float* pp = p;
+                    Vector4* vv0 = vvv0;
+                    Vector4* vv1 = vvv1;
+
+                    for (var i = 0; i < v0.Vector4s.Length; i++)
+                        *pp++ = Vector4.Dot(*vv0++,*vv1++);
+                }
+                //float sum = 0;
+                //foreach (var t in tmp)
+                //    sum += t;
+                return tmp.Sum();
+            }
 
             public static LongVector Add(LongVector v0, LongVector v1)
             {
